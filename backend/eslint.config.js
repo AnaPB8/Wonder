@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default defineConfig([
   {
-    ignores: ['dist/'],
+    ignores: ['dist/**', 'coverage/**'],
   },
   {
     files: ['src/**/*.ts'],

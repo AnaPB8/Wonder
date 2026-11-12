@@ -1,7 +1,10 @@
-
 import express from 'express';
 
 const app = express();
+
+// Prevent exposing the Express framework in
+// the response headers for security reasons
+app.disable('x-powered-by');
 
 app.use(express.json());
 
