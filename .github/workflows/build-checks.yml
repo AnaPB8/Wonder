@@ -1,0 +1,148 @@
+# Automated build and quality checks for Wonder
+name: Wonder Build Checks
+
+# Workflow is triggered on
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Github Actions can read the contents of the repository
+permissions:
+  contents: read
+
+jobs:
+
+  # Frontend validation
+  frontend:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+
+    # Execute commands from the frontend directory
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # Retrieve the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Configure Node.js and cache npm dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # Install dependencies from package-lock.json
+      - name: Install dependencies
+        run: npm ci
+
+      # Static code analysis
+      - name: Run ESLint
+        run: npm run lint
+
+      # Execute automated tests and generate coverage reports
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      # Upload frontend coverage report
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
+
+      # Check TypeScript and build the frontend
+      - name: Build frontend
+        run: npm run build
+
+  # Backend validation
+  backend:
+    name: Backend Checks
+    runs-on: ubuntu-latest
+
+    # Execute commands from the backend directory
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # Retrieve the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Configure Node.js and cache npm dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      # Install dependencies from package-lock.json
+      - name: Install dependencies
+        run: npm ci
+
+      # Static code analysis
+      - name: Run ESLint
+        run: npm run lint
+
+      # TypeScript type checking
+      - name: Check TypeScript
+        run: npm run typecheck
+
+      # Execute automated tests and generate coverage reports
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      # Upload backend coverage report
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/lcov.info
+          if-no-files-found: error
+
+      # Compile TypeScript into JavaScript
+      - name: Build backend
+        run: npm run build
+
+  # SonarQube Cloud code quality analysis
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+
+    # Analyze the main branch and pull requests
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+
+    steps:
+      # Retrieve the complete Git history
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Download coverage reports from frontend and backend
+      - name: Download coverage reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-coverage'
+          path: coverage-reports
+          merge-multiple: false
+
+      # Adjust LCOV paths to match the repository structure
+      - name: Normalize coverage paths
+        run: |
+          sed -i 's|^SF:src/|SF:frontend/src/|' coverage-reports/frontend-coverage/lcov.info
+          sed -i 's|^SF:src/|SF:backend/src/|' coverage-reports/backend-coverage/lcov.info
+
+      # Analyze code and send results to SonarQube Cloud
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
